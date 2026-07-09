@@ -270,6 +270,53 @@ describe('POST /api/subscriptions 自动应用提醒规则', () => {
     expect(subscription.reminderRules).toHaveLength(2);
     expect(subscription.reminderRules.map((rule) => rule.value)).toEqual([7, 1]);
   });
+
+  it('PUT /api/subscriptions 用启用的 reminderRules 同步旧提醒字段', async () => {
+    const cookie = await loginCookie();
+    const createRes = await app.request('/api/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: 'Update Rules',
+        expiryDate: '2026-12-31T00:00:00Z',
+        amount: 1,
+        currency: 'CNY',
+        periodValue: 1,
+        periodUnit: 'month'
+      })
+    }, env);
+    const subId = (await createRes.json()).subscription.id;
+
+    const updateRes = await app.request(`/api/subscriptions/${subId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: 'Update Rules',
+        expiryDate: '2026-12-31T00:00:00Z',
+        amount: 1,
+        currency: 'CNY',
+        periodValue: 1,
+        periodUnit: 'month',
+        reminderUnit: 'day',
+        reminderValue: 7,
+        reminderRules: [
+          { type: 'before_expiry', value: 7, unit: 'days', isEnabled: false },
+          { type: 'before_expiry', value: 3, unit: 'days', isEnabled: true },
+          { type: 'before_expiry', value: 1, unit: 'days', isEnabled: true }
+        ]
+      })
+    }, env);
+    expect(updateRes.status).toBe(200);
+    const body = await updateRes.json();
+    expect(body.subscription.reminderValue).toBe(3);
+
+    const rules = await remindersRepo.listForSubscription(env, subId);
+    expect(rules.map((rule) => [rule.value, rule.isEnabled])).toEqual([
+      [7, false],
+      [3, true],
+      [1, true]
+    ]);
+  });
 });
 
 describe('GET /api/version', () => {

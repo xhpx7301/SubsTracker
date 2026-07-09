@@ -27,6 +27,25 @@ async function attachReminderRules(env, subscriptions) {
   return Array.isArray(subscriptions) ? enriched : enriched[0];
 }
 
+function applyLegacyReminderFromRules(subscription) {
+  if (!subscription || !Array.isArray(subscription.reminderRules)) return subscription;
+
+  const primary = subscription.reminderRules
+    .filter((rule) => rule && rule.isEnabled !== false)
+    .find((rule) => rule.type === 'before_expiry' || rule.type === 'on_expiry');
+  if (!primary) return subscription;
+
+  const unit = primary.unit === 'hours' || primary.unit === 'hour' ? 'hour' : 'day';
+  const value = primary.type === 'on_expiry' ? 0 : Math.max(0, Number(primary.value) || 0);
+  return {
+    ...subscription,
+    reminderUnit: unit,
+    reminderValue: value,
+    reminderDays: unit === 'day' ? value : 0,
+    reminderHours: unit === 'hour' ? value : undefined
+  };
+}
+
 async function testSingleSubscriptionNotification(id, env) {
   try {
     const subscription = await getSubscription(id, env);
@@ -107,7 +126,7 @@ async function handleSubscriptions(request, env, path) {
     }
 
     if (method === 'POST') {
-      const subscription = await request.json();
+      const subscription = applyLegacyReminderFromRules(await request.json());
       const result = await createSubscription(subscription, env);
       // 本次：创建成功后写入提醒规则
       if (result.success && result.subscription) {
@@ -189,8 +208,19 @@ async function handleSubscriptions(request, env, path) {
     }
 
     if (method === 'PUT') {
-      const subscription = await request.json();
+      const subscription = applyLegacyReminderFromRules(await request.json());
       const result = await updateSubscription(id, subscription, env);
+      if (result.success && Array.isArray(subscription.reminderRules)) {
+        try {
+          const rules = subscription.reminderRules.map(remindersRepo.normalizeRule);
+          await remindersRepo.replaceForSubscription(env, id, rules);
+          if (result.subscription) {
+            result.subscription.reminderRules = await remindersRepo.listForSubscription(env, id);
+          }
+        } catch (err) {
+          console.error('[subscriptions] 更新提醒规则失败（订阅本身已更新）:', err);
+        }
+      }
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
     }
 

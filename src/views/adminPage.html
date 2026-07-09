@@ -1412,6 +1412,19 @@ const lunarBiz = {
       return '提前' + value + unit;
     }
 
+    function getLegacyReminderFromRules(rules, fallbackUnit, fallbackValue) {
+      const enabledRules = Array.isArray(rules)
+        ? rules.filter(rule => rule && rule.isEnabled !== false)
+        : [];
+      const primary = enabledRules.find(rule => rule.type === 'before_expiry' || rule.type === 'on_expiry');
+      if (!primary) {
+        return { unit: fallbackUnit === 'hour' ? 'hour' : 'day', value: Number(fallbackValue) || 0 };
+      }
+      const unit = primary.unit === 'hours' || primary.unit === 'hour' ? 'hour' : 'day';
+      const value = primary.type === 'on_expiry' ? 0 : Math.max(0, Number(primary.value) || 0);
+      return { unit, value };
+    }
+
     function attachHoverListeners() {
       function positionTooltip(element, tooltip) {
         const rect = element.getBoundingClientRect();
@@ -3213,8 +3226,18 @@ const lunarBiz = {
       }
       
       const id = document.getElementById('subscriptionId').value;
-      const reminderUnit = document.getElementById('reminderUnit').value;
-      const reminderValue = Number(document.getElementById('reminderValue').value) || 0;
+      const currentReminderRules = window.ReminderRulesEditor
+        ? window.ReminderRulesEditor.getRules()
+        : null;
+      const fallbackReminderUnit = document.getElementById('reminderUnit').value;
+      const fallbackReminderValue = Number(document.getElementById('reminderValue').value) || 0;
+      const legacyReminder = getLegacyReminderFromRules(
+        currentReminderRules,
+        fallbackReminderUnit,
+        fallbackReminderValue
+      );
+      const reminderUnit = legacyReminder.unit;
+      const reminderValue = legacyReminder.value;
       const reminderHint = document.getElementById('reminderHint');
       if (reminderHint) {
         reminderHint.textContent = reminderUnit === 'hour'
@@ -3240,6 +3263,7 @@ const lunarBiz = {
         reminderValue: reminderValue,
         reminderDays: reminderUnit === 'day' ? reminderValue : 0,
         reminderHours: reminderUnit === 'hour' ? reminderValue : undefined,
+        reminderRules: Array.isArray(currentReminderRules) ? currentReminderRules : undefined,
         useLunar: document.getElementById('useLunar').checked
       };
       
