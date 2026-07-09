@@ -240,6 +240,36 @@ describe('POST /api/subscriptions 自动应用提醒规则', () => {
     expect(rules).toHaveLength(1);
     expect(rules[0].value).toBe(14);
   });
+
+  it('GET /api/subscriptions 返回多提醒规则用于列表展示', async () => {
+    const cookie = await loginCookie();
+    const createRes = await app.request('/api/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        name: 'Rules In List',
+        expiryDate: '2026-12-31T00:00:00Z',
+        amount: 1,
+        currency: 'CNY',
+        periodValue: 1,
+        periodUnit: 'month',
+        reminderRules: [
+          { type: 'before_expiry', value: 7, unit: 'days' },
+          { type: 'before_expiry', value: 1, unit: 'days' }
+        ]
+      })
+    }, env);
+    const subId = (await createRes.json()).subscription.id;
+
+    const listRes = await app.request('/api/subscriptions', {
+      headers: { Cookie: cookie }
+    }, env);
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    const subscription = list.find((item) => item.id === subId);
+    expect(subscription.reminderRules).toHaveLength(2);
+    expect(subscription.reminderRules.map((rule) => rule.value)).toEqual([7, 1]);
+  });
 });
 
 describe('GET /api/version', () => {
