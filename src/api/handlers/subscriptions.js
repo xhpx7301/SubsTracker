@@ -15,6 +15,17 @@ import { lunarCalendar } from '../../core/lunar.js';
 import { formatTimeInTimezone, formatTimezoneDisplay } from '../../core/time.js';
 import { formatAmount } from '../../core/currency-format.js';
 import { extractTagsFromSubscriptions } from '../utils.js';
+import * as remindersRepo from '../../data/reminders.repo.js';
+
+async function attachReminderRules(env, subscriptions) {
+  const list = Array.isArray(subscriptions) ? subscriptions : [subscriptions];
+  const enriched = await Promise.all(list.map(async (subscription) => {
+    if (!subscription || !subscription.id) return subscription;
+    const reminderRules = await remindersRepo.listForSubscription(env, subscription.id);
+    return { ...subscription, reminderRules };
+  }));
+  return Array.isArray(subscriptions) ? enriched : enriched[0];
+}
 
 async function testSingleSubscriptionNotification(id, env) {
   try {
@@ -91,7 +102,8 @@ async function handleSubscriptions(request, env, path) {
   if (path === '/subscriptions') {
     if (method === 'GET') {
       const subscriptions = await getAllSubscriptions(env);
-      return new Response(JSON.stringify(subscriptions), { headers: { 'Content-Type': 'application/json' } });
+      const enriched = await attachReminderRules(env, subscriptions);
+      return new Response(JSON.stringify(enriched), { headers: { 'Content-Type': 'application/json' } });
     }
 
     if (method === 'POST') {
@@ -172,7 +184,8 @@ async function handleSubscriptions(request, env, path) {
 
     if (method === 'GET') {
       const subscription = await getSubscription(id, env);
-      return new Response(JSON.stringify(subscription), { headers: { 'Content-Type': 'application/json' } });
+      const enriched = await attachReminderRules(env, subscription);
+      return new Response(JSON.stringify(enriched), { headers: { 'Content-Type': 'application/json' } });
     }
 
     if (method === 'PUT') {

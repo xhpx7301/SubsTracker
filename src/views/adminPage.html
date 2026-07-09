@@ -1357,6 +1357,23 @@ const lunarBiz = {
     }
 
     function getReminderSettings(subscription) {
+      const rules = Array.isArray(subscription.reminderRules)
+        ? subscription.reminderRules.filter(rule => rule && rule.isEnabled !== false)
+        : [];
+      if (rules.length > 0) {
+        const labels = rules.map(formatReminderRuleLabel).filter(Boolean);
+        const visibleLabels = labels.slice(0, 3);
+        const suffix = labels.length > visibleLabels.length ? ' 等' + labels.length + '条' : '';
+        return {
+          unit: 'rules',
+          value: null,
+          count: labels.length,
+          isMultiRule: true,
+          displayText: visibleLabels.join(' / ') + suffix,
+          fullText: labels.join(' / ')
+        };
+      }
+
       const fallbackDays = subscription.reminderDays !== undefined ? subscription.reminderDays : 7;
       let unit = subscription.reminderUnit || '';
       let value = subscription.reminderValue;
@@ -1380,6 +1397,19 @@ const lunarBiz = {
         value,
         displayText: unit === 'hour' ? '提前' + value + '小时' : '提前' + value + '天'
       };
+    }
+
+    function formatReminderRuleLabel(rule) {
+      const value = Number(rule.value) || 0;
+      const unit = rule.unit === 'hours' || rule.unit === 'hour' ? '小时' : '天';
+      if (rule.type === 'on_expiry' || (rule.type === 'before_expiry' && value === 0)) {
+        return '到期当天';
+      }
+      if (rule.type === 'after_expiry') {
+        const interval = Number(rule.repeatInterval);
+        return interval > 0 ? '到期后每' + interval + '小时' : '到期后提醒';
+      }
+      return '提前' + value + unit;
     }
 
     function attachHoverListeners() {
@@ -1655,10 +1685,13 @@ const lunarBiz = {
           : '';
         const startDateHtml = startDateText ? createHoverText(startDateText, 30, 'text-xs text-gray-500 mt-1') : '';
 
-        const reminderExtra = reminder.value === 0
-          ? '<div class="text-xs text-gray-500 mt-1">仅到期时提醒</div>'
-          : (reminder.unit === 'hour' ? '<div class="text-xs text-gray-500 mt-1">小时级提醒</div>' : '');
-        const reminderHtml = '<div><i class="fas fa-bell mr-1"></i>' + reminder.displayText + '</div>' + reminderExtra;
+        const reminderExtra = reminder.isMultiRule
+          ? '<div class="text-xs text-gray-500 mt-1">共' + reminder.count + '条规则</div>'
+          : (reminder.value === 0
+            ? '<div class="text-xs text-gray-500 mt-1">仅到期时提醒</div>'
+            : (reminder.unit === 'hour' ? '<div class="text-xs text-gray-500 mt-1">小时级提醒</div>' : ''));
+        const reminderTitle = reminder.fullText || reminder.displayText;
+        const reminderHtml = '<div title="' + escapeHtml(reminderTitle) + '"><i class="fas fa-bell mr-1"></i>' + escapeHtml(reminder.displayText) + '</div>' + reminderExtra;
 
         const currencySymbols = {
           'CNY': '¥', 'USD': '$', 'HKD': 'HK$', 'TWD': 'NT$', 
